@@ -36,7 +36,7 @@ Une application web simple pour suivre les performances des joueurs lors des mat
 ### Lancement de l'application
 
 ```bash
-./run.sh
+./start.sh
 ```
 
 ### Accès à l'application

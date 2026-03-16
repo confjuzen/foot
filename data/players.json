@@ -18,5 +18,10 @@
     "id": 4,
     "name": "Jordan Pickford",
     "position": "Goalkeeper"
+  },
+  {
+    "id": 5,
+    "name": "Virgil van Dijk",
+    "position": "Defender"
   }
 ]
