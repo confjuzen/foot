@@ -5,12 +5,27 @@ import { Player, CreatePlayerDto } from '../player/player.entity';
 import { Match, CreateMatchDto } from '../match/match.entity';
 import { Performance, CreatePerformanceDto } from '../performance/performance.entity';
 
+interface MatchPerformanceDocument {
+  id: number;
+  player: Player;
+  goals: number;
+  assists: number;
+  rating: number;
+}
+
+interface MatchDocument extends Match {
+  performances: MatchPerformanceDocument[];
+}
+
+interface DatabaseDocument {
+  players: Player[];
+  matches: MatchDocument[];
+}
+
 @Injectable()
 export class InMemoryDataService {
   private readonly dataDir = process.env.DATA_DIR ? process.env.DATA_DIR : join(process.cwd(), '..', 'data');
-  private readonly playersFile = join(this.dataDir, 'players.json');
-  private readonly matchesFile = join(this.dataDir, 'matches.json');
-  private readonly performancesFile = join(this.dataDir, 'performances.json');
+  private readonly dbFile = join(this.dataDir, 'db.json');
 
   constructor() {
     this.ensureStorage();
@@ -21,31 +36,34 @@ export class InMemoryDataService {
       mkdirSync(this.dataDir, { recursive: true });
     }
 
-    if (!existsSync(this.playersFile)) {
-      writeFileSync(this.playersFile, '[]\n', 'utf8');
+    if (existsSync(this.dbFile)) {
+      return;
     }
-    if (!existsSync(this.matchesFile)) {
-      writeFileSync(this.matchesFile, '[]\n', 'utf8');
-    }
-    if (!existsSync(this.performancesFile)) {
-      writeFileSync(this.performancesFile, '[]\n', 'utf8');
-    }
+
+    const emptyDb: DatabaseDocument = { players: [], matches: [] };
+    writeFileSync(this.dbFile, JSON.stringify(emptyDb, null, 2) + '\n', 'utf8');
   }
 
-  private readJsonArrayFile<T>(filePath: string): T[] {
+  private readDatabase(): DatabaseDocument {
     this.ensureStorage();
-    const raw = readFileSync(filePath, 'utf8').trim();
-    if (raw === '') return [];
+    const raw = readFileSync(this.dbFile, 'utf8').trim();
+    if (raw === '') {
+      return { players: [], matches: [] };
+    }
     const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) {
-      return [];
+    if (parsed == null || typeof parsed !== 'object') {
+      return { players: [], matches: [] };
     }
-    return parsed as T[];
+    const db = parsed as Partial<DatabaseDocument>;
+    return {
+      players: Array.isArray(db.players) ? (db.players as Player[]) : [],
+      matches: Array.isArray(db.matches) ? (db.matches as MatchDocument[]) : [],
+    };
   }
 
-  private writeJsonArrayFile<T>(filePath: string, value: T[]) {
+  private writeDatabase(value: DatabaseDocument) {
     this.ensureStorage();
-    writeFileSync(filePath, JSON.stringify(value, null, 2) + '\n', 'utf8');
+    writeFileSync(this.dbFile, JSON.stringify(value, null, 2) + '\n', 'utf8');
   }
 
   private nextId(items: Array<{ id: number }>): number {
@@ -54,24 +72,32 @@ export class InMemoryDataService {
   }
 
   private get players(): Player[] {
-    return this.readJsonArrayFile<Player>(this.playersFile);
+    return this.readDatabase().players;
   }
   private set players(value: Player[]) {
-    this.writeJsonArrayFile<Player>(this.playersFile, value);
+    const db = this.readDatabase();
+    this.writeDatabase({ ...db, players: value });
   }
 
-  private get matches(): Match[] {
-    return this.readJsonArrayFile<Match>(this.matchesFile);
+  private get matches(): MatchDocument[] {
+    return this.readDatabase().matches;
   }
-  private set matches(value: Match[]) {
-    this.writeJsonArrayFile<Match>(this.matchesFile, value);
+  private set matches(value: MatchDocument[]) {
+    const db = this.readDatabase();
+    this.writeDatabase({ ...db, matches: value });
   }
 
   private get performances(): Performance[] {
-    return this.readJsonArrayFile<Performance>(this.performancesFile);
-  }
-  private set performances(value: Performance[]) {
-    this.writeJsonArrayFile<Performance>(this.performancesFile, value);
+    return this.matches.flatMap((m) =>
+      (m.performances ?? []).map((p) => ({
+        id: p.id,
+        matchId: m.id,
+        playerId: p.player.id,
+        goals: p.goals,
+        assists: p.assists,
+        rating: p.rating,
+      })),
+    );
   }
 
   // Players
@@ -92,18 +118,22 @@ export class InMemoryDataService {
 
   // Matches
   getMatches(): Match[] {
-    return this.matches;
+    return this.matches.map(({ performances: _performances, ...match }) => match);
   }
 
   createMatch(createMatchDto: CreateMatchDto): Match {
     const matches = this.matches;
-    const match: Match = { id: this.nextId(matches), ...createMatchDto };
+    const match: MatchDocument = { id: this.nextId(matches), ...createMatchDto, performances: [] };
     this.matches = [...matches, match];
-    return match;
+    const { performances: _performances, ...matchOnly } = match;
+    return matchOnly;
   }
 
   getMatchById(id: number): Match | undefined {
-    return this.matches.find((match) => match.id === id);
+    const match = this.matches.find((m) => m.id === id);
+    if (!match) return undefined;
+    const { performances: _performances, ...matchOnly } = match;
+    return matchOnly;
   }
 
   // Performances
@@ -112,7 +142,16 @@ export class InMemoryDataService {
   }
 
   getPerformancesByMatchId(matchId: number): Performance[] {
-    return this.performances.filter((perf) => perf.matchId === matchId);
+    const match = this.matches.find((m) => m.id === matchId);
+    if (!match) return [];
+    return (match.performances ?? []).map((p) => ({
+      id: p.id,
+      matchId: match.id,
+      playerId: p.player.id,
+      goals: p.goals,
+      assists: p.assists,
+      rating: p.rating,
+    }));
   }
 
   getPerformancesByPlayerId(playerId: number): Performance[] {
@@ -120,14 +159,44 @@ export class InMemoryDataService {
   }
 
   createPerformance(createPerformanceDto: CreatePerformanceDto, matchId: number): Performance {
-    const performances = this.performances;
-    const performance: Performance = {
-      id: this.nextId(performances),
-      matchId,
-      ...createPerformanceDto,
+    const matches = this.matches;
+    const matchIndex = matches.findIndex((m) => m.id === matchId);
+    if (matchIndex === -1) {
+      throw new Error('Match not found');
+    }
+
+    const player = this.getPlayerById(createPerformanceDto.playerId);
+    if (!player) {
+      throw new Error('Player not found');
+    }
+
+    const allPerformances = this.performances;
+    const nextPerformanceId = this.nextId(allPerformances);
+
+    const match = matches[matchIndex];
+    const newPerfDoc: MatchPerformanceDocument = {
+      id: nextPerformanceId,
+      player,
+      goals: createPerformanceDto.goals,
+      assists: createPerformanceDto.assists,
+      rating: createPerformanceDto.rating,
     };
-    this.performances = [...performances, performance];
-    return performance;
+
+    const updatedMatch: MatchDocument = {
+      ...match,
+      performances: [...(match.performances ?? []), newPerfDoc],
+    };
+
+    this.matches = [...matches.slice(0, matchIndex), updatedMatch, ...matches.slice(matchIndex + 1)];
+
+    return {
+      id: newPerfDoc.id,
+      matchId,
+      playerId: player.id,
+      goals: newPerfDoc.goals,
+      assists: newPerfDoc.assists,
+      rating: newPerfDoc.rating,
+    };
   }
 
   getPlayerAverageRating(playerId: number): number {
