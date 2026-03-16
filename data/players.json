@@ -1,0 +1,22 @@
+[
+  {
+    "id": 1,
+    "name": "Kylian Mbappé",
+    "position": "Forward"
+  },
+  {
+    "id": 2,
+    "name": "Harry Kane",
+    "position": "Forward"
+  },
+  {
+    "id": 3,
+    "name": "Jude Bellingham",
+    "position": "Midfield"
+  },
+  {
+    "id": 4,
+    "name": "Jordan Pickford",
+    "position": "Goalkeeper"
+  }
+]

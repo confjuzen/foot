@@ -1,0 +1,14 @@
+[
+  {
+    "id": 1,
+    "teamA": "Real Madrid C.F.",
+    "teamB": "FC Bayern Munich",
+    "date": "2026-11-11"
+  },
+  {
+    "id": 2,
+    "teamA": "Real Madrid C.F.",
+    "teamB": "Everton F.C",
+    "date": "2026-12-12"
+  }
+]
