@@ -58,12 +58,21 @@ POST /matches
 → créer un match
 
 POST /matches/:matchId/performances
-→
+→ Ajouter une performance
 
 - `GET /players/stats` - Récupérer les joueurs avec leur note moyenne
+
+
 - `GET /matches/:id` - Récupérer un match spécifique
+GET /matches/:id (match details)
+
+
 - `GET /matches/:matchId/performances` - Récupérer les performances d'un match
-- `POST /matches/:matchId/performances` - Ajouter une performance
+GET /matches/:matchId/performances (list performances for a match)
+
+
+GET /performances (list all performances)
+GET /players/:id/performances (list performances for a player)
 
 ### Exemple Body
 ```json

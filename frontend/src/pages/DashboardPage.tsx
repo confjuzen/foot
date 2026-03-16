@@ -15,6 +15,10 @@ const DashboardPage: React.FC = () => {
 	const [players, setPlayers] = useState<Player[]>([]);
 	const [matches, setMatches] = useState<Match[]>([]);
 	const [performances, setPerformances] = useState<Performance[]>([]);
+	const [selectedMatchId, setSelectedMatchId] = useState<number | null>(null);
+	const [matchPerformances, setMatchPerformances] = useState<Performance[]>(
+		[],
+	);
 	const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(
 		null,
 	);
@@ -25,6 +29,7 @@ const DashboardPage: React.FC = () => {
 	const [loadingPlayers, setLoadingPlayers] = useState(true);
 	const [loadingMatches, setLoadingMatches] = useState(true);
 	const [loadingPerformances, setLoadingPerformances] = useState(true);
+	const [loadingMatchDetail, setLoadingMatchDetail] = useState(false);
 	const [loadingPlayerDetail, setLoadingPlayerDetail] = useState(false);
 
 	const selectedPlayer = useMemo(() => {
@@ -61,12 +66,24 @@ const DashboardPage: React.FC = () => {
 	const loadPlayers = useCallback(async () => {
 		setLoadingPlayers(true);
 		try {
-			const playersData = await playerService.getPlayers();
+			const playersData = await playerService.getPlayersWithStats();
 			setPlayers(playersData);
 		} catch (error) {
 			console.error("Error loading players:", error);
 		} finally {
 			setLoadingPlayers(false);
+		}
+	}, []);
+
+	const loadMatches = useCallback(async () => {
+		setLoadingMatches(true);
+		try {
+			const matchesData = await matchService.getMatches();
+			setMatches(matchesData);
+		} catch (error) {
+			console.error("Error loading matches:", error);
+		} finally {
+			setLoadingMatches(false);
 		}
 	}, []);
 
@@ -83,15 +100,17 @@ const DashboardPage: React.FC = () => {
 		}
 	}, []);
 
-	const loadMatches = useCallback(async () => {
-		setLoadingMatches(true);
+	const loadSelectedMatch = useCallback(async (matchId: number) => {
+		setLoadingMatchDetail(true);
 		try {
-			const matchesData = await matchService.getMatches();
-			setMatches(matchesData);
+			const performancesData =
+				await performanceService.getPerformancesByMatch(matchId);
+			setMatchPerformances(performancesData);
 		} catch (error) {
-			console.error("Error loading matches:", error);
+			console.error("Error loading match performances:", error);
+			setMatchPerformances([]);
 		} finally {
-			setLoadingMatches(false);
+			setLoadingMatchDetail(false);
 		}
 	}, []);
 
@@ -116,11 +135,24 @@ const DashboardPage: React.FC = () => {
 	}, [loadMatches, loadPerformances, loadPlayers]);
 
 	useEffect(() => {
+		if (selectedMatchId == null) {
+			setMatchPerformances([]);
+			return;
+		}
+		loadSelectedMatch(selectedMatchId);
+	}, [loadSelectedMatch, selectedMatchId]);
+
+	useEffect(() => {
+		if (selectedMatchId != null) return;
+		if (matches.length === 0) return;
+		setSelectedMatchId(matches[0].id);
+	}, [matches, selectedMatchId]);
+
+	useEffect(() => {
 		if (selectedPlayerId == null) {
 			setPlayerPerformances([]);
 			return;
 		}
-
 		loadSelectedPlayer(selectedPlayerId);
 	}, [loadSelectedPlayer, selectedPlayerId]);
 
@@ -134,8 +166,17 @@ const DashboardPage: React.FC = () => {
 		if (selectedPlayerId != null) {
 			await loadSelectedPlayer(selectedPlayerId);
 		}
+		if (selectedMatchId != null) {
+			await loadSelectedMatch(selectedMatchId);
+		}
 		await loadPerformances();
-	}, [loadPerformances, loadSelectedPlayer, selectedPlayerId]);
+	}, [
+		loadPerformances,
+		loadSelectedMatch,
+		loadSelectedPlayer,
+		selectedMatchId,
+		selectedPlayerId,
+	]);
 
 	return (
 		<div style={{ padding: "20px", maxWidth: "1200px", margin: "0 auto" }}>
@@ -180,7 +221,7 @@ const DashboardPage: React.FC = () => {
 					{loadingPlayers ? (
 						<p>Loading...</p>
 					) : (
-						<PlayerList players={players} />
+						<PlayerList players={players} showStats />
 					)}
 				</div>
 
@@ -202,6 +243,136 @@ const DashboardPage: React.FC = () => {
 					) : (
 						<MatchList matches={matches} />
 					)}
+
+					<div style={{ marginTop: "16px" }}>
+						<h3 style={{ marginTop: 0 }}>Match Detail</h3>
+						<div style={{ marginBottom: "12px" }}>
+							<div
+								style={{
+									marginBottom: "8px",
+									fontSize: "14px",
+									color: "#444",
+								}}
+							>
+								Select match
+							</div>
+							<select
+								value={selectedMatchId ?? 0}
+								onChange={(e) =>
+									setSelectedMatchId(Number(e.target.value))
+								}
+								style={{ padding: "8px", width: "260px" }}
+								disabled={matches.length === 0}
+							>
+								{matches.map((match) => (
+									<option key={match.id} value={match.id}>
+										{match.teamA} vs {match.teamB} (
+										{match.date})
+									</option>
+								))}
+							</select>
+						</div>
+
+						{loadingMatchDetail ? (
+							<p>Loading...</p>
+						) : matchPerformances.length === 0 ? (
+							<p>No performances recorded for this match</p>
+						) : (
+							<table
+								style={{
+									width: "100%",
+									borderCollapse: "collapse",
+								}}
+							>
+								<thead>
+									<tr style={{ backgroundColor: "#f5f5f5" }}>
+										<th
+											style={{
+												padding: "10px",
+												border: "1px solid #ddd",
+												textAlign: "left",
+											}}
+										>
+											Player
+										</th>
+										<th
+											style={{
+												padding: "10px",
+												border: "1px solid #ddd",
+												textAlign: "left",
+											}}
+										>
+											Goals
+										</th>
+										<th
+											style={{
+												padding: "10px",
+												border: "1px solid #ddd",
+												textAlign: "left",
+											}}
+										>
+											Assists
+										</th>
+										<th
+											style={{
+												padding: "10px",
+												border: "1px solid #ddd",
+												textAlign: "left",
+											}}
+										>
+											Rating
+										</th>
+									</tr>
+								</thead>
+								<tbody>
+									{matchPerformances.map((perf) => {
+										const player = players.find(
+											(p) => p.id === perf.playerId,
+										);
+										const label = player
+											? `${player.name} (${player.position})`
+											: `Player ${perf.playerId}`;
+										return (
+											<tr key={perf.id}>
+												<td
+													style={{
+														padding: "10px",
+														border: "1px solid #ddd",
+													}}
+												>
+													{label}
+												</td>
+												<td
+													style={{
+														padding: "10px",
+														border: "1px solid #ddd",
+													}}
+												>
+													{perf.goals}
+												</td>
+												<td
+													style={{
+														padding: "10px",
+														border: "1px solid #ddd",
+													}}
+												>
+													{perf.assists}
+												</td>
+												<td
+													style={{
+														padding: "10px",
+														border: "1px solid #ddd",
+													}}
+												>
+													{perf.rating}/10
+												</td>
+											</tr>
+										);
+									})}
+								</tbody>
+							</table>
+						)}
+					</div>
 				</div>
 
 				<div
